@@ -82,28 +82,49 @@ claims_clean <- claims_raw %>%
 ## Logistic PCR
 
 ```{r}
-text_features <- nlp_fn(claims_clean)
+#text_features <- nlp_fn(claims_clean)
+model_df <- text_features %>%
+  select(-.id)
 
-# Separate predictors and outcome
-X <- text_features %>% select(-.id, -bclass)
-y <- text_features$bclass
+model_df$bclass <- as.factor(model_df$bclass)
 
-# PCA
-pca_res <- prcomp(X, center = TRUE, scale. = TRUE)
+set.seed(123)
+split <- initial_split(model_df, strata = bclass)
 
-# Choose number of PCs (example: 10)
-X_pcs <- as.data.frame(pca_res$x[, 1:10])
+train_df <- training(split)
+test_df  <- testing(split)
 
-# Fit logistic regression
-logistic_pcr <- glm(y ~ ., data = X_pcs, family = binomial())
+pcr_recipe <- recipe(bclass ~ ., data = train_df) %>%
+  step_zv(all_predictors()) %>% 
+  step_normalize(all_predictors()) %>%
+  step_pca(all_predictors(), num_comp = 50)
 
-# Predict probabilities
-pred_probs <- predict(logistic_pcr, X_pcs, type = "response")
+logistic_spec <- logistic_reg(
+  mode = "classification",
+  penalty = 0.01,
+  mixture = 0) %>%
+  set_engine("glmnet")
 
-# Convert to binary prediction
-pred_class <- ifelse(pred_probs > 0.5, 1, 0)
+pcr_wf <- workflow() %>%
+  add_recipe(pcr_recipe) %>%
+  add_model(logistic_spec)
+
+final_fit <- fit(pcr_wf, train_df)
+
+# Predictions (class)
+pred_class <- predict(final_fit, test_df)
+
+# Predictions (probabilities)
+pred_prob <- predict(final_fit, test_df, type = "prob")
+
+# Combine with test data
+bclass <- as_tibble(test_df$bclass)
+results <- bind_cols(bclass, pred_class, pred_prob) %>% 
+  rename(bclass = value)
 
 # Accuracy
-mean(pred_class == y)
+accuracy(results, truth = bclass, estimate = .pred_class)
+# 0.616
 ```
+
 
