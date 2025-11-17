@@ -82,7 +82,7 @@ claims_clean <- claims_raw %>%
 ## Logistic PCR
 
 ```{r}
-#text_features <- nlp_fn(claims_clean)
+text_features <- nlp_fn(claims_clean)
 model_df <- text_features %>%
   select(-.id)
 
@@ -128,3 +128,65 @@ accuracy(results, truth = bclass, estimate = .pred_class)
 ```
 
 
+```{r}
+text_features <- nlp_fn(claims_clean)
+model_df <- text_features %>%
+  select(-.id)
+
+model_df$bclass <- as.factor(model_df$bclass)
+
+set.seed(123)
+split <- initial_split(model_df, strata = bclass)
+
+train_df <- training(split)
+test_df  <- testing(split)
+
+pcr_recipe <- recipe(bclass ~ ., data = train_df) %>%
+  step_zv(all_predictors()) %>% 
+  step_normalize(all_predictors()) %>%
+  step_pca(all_predictors(), num_comp = 50)
+
+logistic_spec <- logistic_reg(
+  mode = "classification",
+  penalty = 0.01,
+  mixture = 0) %>%
+  set_engine("glmnet")
+
+pcr_wf <- workflow() %>%
+  add_recipe(pcr_recipe) %>%
+  add_model(logistic_spec)
+
+set.seed(123)
+folds <- vfold_cv(train_df, v = 5, strata = bclass)
+
+pca_grid <- tibble(num_comp = c(10, 20, 50, 100, 200))
+
+tune_res <- tune_grid(
+  pcr_wf,
+  resamples = folds,
+  grid = pca_grid,
+  metrics = metric_set(accuracy)
+)
+
+best_pcs <- select_best(tune_res, metric = "accuracy")
+best_pcs
+
+final_wf <- finalize_workflow(pcr_wf, best_pcs)
+
+final_fit <- fit(final_wf, train_df)
+
+# Predictions (class)
+pred_class <- predict(final_fit, test_df)
+
+# Predictions (probabilities)
+pred_prob <- predict(final_fit, test_df, type = "prob")
+
+# Combine with test data
+bclass <- as_tibble(test_df$bclass)
+results <- bind_cols(bclass, pred_class, pred_prob) %>% 
+  rename(bclass = value)
+
+# Accuracy
+accuracy(results, truth = bclass, estimate = .pred_class)
+#
+```
