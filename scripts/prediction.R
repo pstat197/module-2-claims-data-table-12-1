@@ -1,19 +1,16 @@
 require(tidyverse)
-require(keras3)
+require(keras)
 require(tensorflow)
 require(reticulate)
 load('data/claims-test.RData')
 load('data/claims-raw.RData')
 source('scripts/preprocessing.R')
 
-tensorflow::install_tensorflow()  # will install python + TF into a virtual env
-
-reticulate::py_require("tensorflow")   # <- fixes the "argument is of length zero" issue
-
-# optional: check config
-tensorflow::tf_config()
-
-tf_model <- load_model_tf('results/example-model')
+#tf_model <- keras::load_model_tf('results/example-model')
+layer <- keras$layers$TFSMLayer(
+  "results/example-model",
+  call_endpoint = "serving_default"
+)
 
 # apply preprocessing pipeline
 clean_df <- claims_test %>%
@@ -26,8 +23,9 @@ x <- clean_df %>%
   pull(text_clean)
 
 # compute predictions
-preds <- predict(tf_model, x) %>%
-  as.numeric()
+#preds <- predict(tf_model, x) %>%
+#  as.numeric()
+preds <- layer(x) %>% as.numeric()
 
 class_labels <- claims_raw %>% pull(bclass) %>% levels()
 
