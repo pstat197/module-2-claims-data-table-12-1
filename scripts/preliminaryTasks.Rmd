@@ -74,65 +74,32 @@ nlp_fn <- function(parse_data.out){
 # clean_df <- claims_test %>%
 #   parse_data() %>%
 #   select(.id, bclass, text_clean)
-load('/Users/minu/Documents/GitHub/module-2-claims-data-table-12-1/data/claims-raw.RData')
+#load('../data/claims-raw.RData')
+#claims_clean <- claims_raw %>%
+ # parse_data()
+
+load('../data/claims-raw.RData')
+
+# use a smaller subset for Task 1 and Task 2 to avoid crashing
+set.seed(123)
 claims_clean <- claims_raw %>%
+  slice_sample(n = 400) %>%   # try 300–500; increase only if your machine handles it
   parse_data()
 ```
 
 ## Logistic PCR
 
+# run not this chunk but the one below 
+
+
+# this one 
 ```{r}
 text_features <- nlp_fn(claims_clean)
 model_df <- text_features %>%
   select(-.id)
-
-model_df$bclass <- as.factor(model_df$bclass)
-
-set.seed(123)
-split <- initial_split(model_df, strata = bclass)
-
-train_df <- training(split)
-test_df  <- testing(split)
-
-pcr_recipe <- recipe(bclass ~ ., data = train_df) %>%
-  step_zv(all_predictors()) %>% 
-  step_normalize(all_predictors()) %>%
-  step_pca(all_predictors(), num_comp = 50)
-
-logistic_spec <- logistic_reg(
-  mode = "classification",
-  penalty = 0.01,
-  mixture = 0) %>%
-  set_engine("glmnet")
-
-pcr_wf <- workflow() %>%
-  add_recipe(pcr_recipe) %>%
-  add_model(logistic_spec)
-
-final_fit <- fit(pcr_wf, train_df)
-
-# Predictions (class)
-pred_class <- predict(final_fit, test_df)
-
-# Predictions (probabilities)
-pred_prob <- predict(final_fit, test_df, type = "prob")
-
-# Combine with test data
-bclass <- as_tibble(test_df$bclass)
-results <- bind_cols(bclass, pred_class, pred_prob) %>% 
-  rename(bclass = value)
-
-# Accuracy
-accuracy(results, truth = bclass, estimate = .pred_class)
-# 0.616
 ```
 
-
 ```{r}
-text_features <- nlp_fn(claims_clean)
-model_df <- text_features %>%
-  select(-.id)
-
 model_df$bclass <- as.factor(model_df$bclass)
 
 set.seed(123)
@@ -189,4 +156,260 @@ results <- bind_cols(bclass, pred_class, pred_prob) %>%
 # Accuracy
 accuracy(results, truth = bclass, estimate = .pred_class)
 #
+```
+
+## Preliminary task 2 
+
+1. Bigram tokenization and TF–IDF
+
+Add a bigram nlp function that parallels your nlp_fn():
+
+```{r}
+# --- Task 2: Bigram tokenization and TF–IDF ---
+
+nlp_fn_bigrams <- function(parse_data.out) {
+  parse_data.out %>%
+    unnest_tokens(
+      output = bigram,
+      input  = text_clean,
+      token  = "ngrams",
+      n      = 2
+    ) %>%
+    # optional cleanup: drop bigrams with digits or punctuation
+    filter(!str_detect(bigram, "[0-9]"),
+           !str_detect(bigram, "[[:punct:]]")) %>%
+    count(.id, bclass, bigram, name = "n") %>%
+    bind_tf_idf(
+      term     = bigram,
+      document = .id,
+      n        = n
+    ) %>%
+    pivot_wider(
+      id_cols     = c(".id", "bclass"),
+      names_from  = "bigram",
+      values_from = "tf_idf",
+      values_fill = 0
+    )
+}
+
+# recompute word-level features to be explicit (safe even if already done)
+text_features <- nlp_fn(claims_clean)
+
+# bigram-level features
+bigram_features <- nlp_fn_bigrams(claims_clean)
+
+
+```
+
+ˆ
+2. Create a consistent train/test split by ID
+
+2. Train/test split using text_features
+```{r}
+# IDs + label for splitting
+set.seed(123)
+split2 <- initial_split(text_features, strata = bclass)
+
+train_text <- training(split2)
+test_text  <- testing(split2)
+
+# data frames for word-level modeling (drop .id)
+train_word_df <- train_text %>% select(-.id)
+test_word_df  <- test_text  %>% select(-.id)
+
+train_word_df$bclass <- as.factor(train_word_df$bclass)
+test_word_df$bclass  <- as.factor(test_word_df$bclass)
+
+
+```
+3. Word-only logistic PCR (baseline for Task 2)
+
+```{r}
+# --- Word-only logistic PCR (baseline) ---
+
+# --- Word-only logistic PCR (baseline with tuning) ---
+
+set.seed(123)
+pcr_recipe_word <- recipe(bclass ~ ., data = train_word_df) %>%
+  step_zv(all_predictors()) %>%
+  step_normalize(all_predictors()) %>%
+  # make num_comp tunable instead of fixed at 50
+  step_pca(all_predictors(), num_comp = tune())
+
+logistic_spec <- logistic_reg(
+  mode    = "classification",
+  penalty = 0.01,
+  mixture = 0
+) %>%
+  set_engine("glmnet")
+
+pcr_wf_word <- workflow() %>%
+  add_recipe(pcr_recipe_word) %>%
+  add_model(logistic_spec)
+
+set.seed(123)
+folds_word <- vfold_cv(train_word_df, v = 5, strata = bclass)
+
+# grid of PCA components to try
+pca_grid <- tibble(num_comp = c(10, 20, 50, 100, 200))
+
+tune_res_word <- tune_grid(
+  pcr_wf_word,
+  resamples = folds_word,
+  grid      = pca_grid,
+  metrics   = metric_set(accuracy)
+)
+
+best_pcs_word <- select_best(tune_res_word, metric = "accuracy")
+best_pcs_word
+
+final_wf_word <- finalize_workflow(pcr_wf_word, best_pcs_word)
+
+final_fit_word <- fit(final_wf_word, train_word_df)
+
+# predictions on test set (baseline)
+pred_class_word <- predict(final_fit_word, test_word_df)
+
+results_word <- bind_cols(
+  bclass = test_word_df$bclass,
+  pred_class_word
+) %>%
+  rename(bclass = bclass)
+
+acc_word <- accuracy(results_word, truth = bclass, estimate = .pred_class)
+acc_word
+
+
+```
+
+4. Get predicted log-odds (logit) from the word model
+
+```{r}
+# --- Predicted log-odds from word-only model ---
+
+# probabilities for each class
+train_prob_df <- predict(final_fit_word, train_word_df, type = "prob")
+test_prob_df  <- predict(final_fit_word, test_word_df,  type = "prob")
+
+# check column names if you're curious:
+# names(train_prob_df)
+
+# take the probability of the "positive" class = 2nd level of bclass
+train_prob_word <- train_prob_df %>% dplyr::pull(2)
+test_prob_word  <- test_prob_df  %>% dplyr::pull(2)
+
+# safe logit function (avoid log(0))
+logit <- function(p) {
+  eps <- 1e-6
+  p <- pmin(pmax(p, eps), 1 - eps)
+  log(p / (1 - p))
+}
+
+train_logit_word <- logit(train_prob_word)
+test_logit_word  <- logit(test_prob_word)
+```
+
+```{r}
+# Sanity check that vector is not 0
+length(train_logit_word)
+nrow(train_text)
+```
+
+
+5. PCA on bigram TF–IDF and build stage-2 design matrices
+
+```{r}
+# --- Align bigram features with the same train/test rows AND run PCA ---
+
+# 1) Align bigram features with train/test IDs
+train_bigram <- train_text %>%
+  select(.id, bclass) %>%
+  left_join(bigram_features, by = c(".id", "bclass"))
+
+test_bigram <- test_text %>%
+  select(.id, bclass) %>%
+  left_join(bigram_features, by = c(".id", "bclass"))
+
+# 2) Bigram matrices (drop .id, label)
+x_bigram_train <- train_bigram %>%
+  select(-.id, -bclass) %>%
+  as.matrix()
+
+x_bigram_test <- test_bigram %>%
+  select(-.id, -bclass) %>%
+  as.matrix()
+
+# 3) Remove zero-variance / constant columns BEFORE PCA
+col_sd <- apply(x_bigram_train, 2, sd, na.rm = TRUE)
+keep_cols <- which(col_sd > 0)
+
+x_bigram_train2 <- x_bigram_train[, keep_cols, drop = FALSE]
+x_bigram_test2  <- x_bigram_test[,  keep_cols, drop = FALSE]
+
+# 4) PCA on bigrams (reduced matrix)
+set.seed(123)
+bigram_pca <- prcomp(x_bigram_train2, center = TRUE, scale. = TRUE)
+
+k_bigram <- min(50, ncol(bigram_pca$x))  # number of PCs to keep
+
+z_bigram_train <- bigram_pca$x[, 1:k_bigram, drop = FALSE]
+z_bigram_test  <- predict(bigram_pca, newdata = x_bigram_test2)[, 1:k_bigram, drop = FALSE]
+
+# 5) Assemble stage-2 train/test data
+train_stage2 <- as_tibble(z_bigram_train) %>%
+  mutate(
+    bclass     = train_text$bclass,
+    logit_word = train_logit_word
+  )
+
+test_stage2 <- as_tibble(z_bigram_test) %>%
+  mutate(
+    bclass     = test_text$bclass,
+    logit_word = test_logit_word
+  )
+
+# 6) Name PCs nicely and put outcome first
+pc_names <- paste0("PC_bigram_", 1:k_bigram)
+names(train_stage2)[1:k_bigram] <- pc_names
+names(test_stage2)[1:k_bigram]  <- pc_names
+
+train_stage2 <- train_stage2 %>% relocate(bclass)
+test_stage2  <- test_stage2  %>% relocate(bclass)
+
+```
+
+
+6. Second-stage logistic regression: logit + bigram PCs
+
+```{r}
+# --- Stage-2 logistic regression: logit_word + bigram PCs ---
+
+train_stage2$bclass <- factor(train_stage2$bclass)
+test_stage2$bclass  <- factor(test_stage2$bclass,
+                              levels = levels(train_stage2$bclass))
+
+stage2_fit <- glm(
+  bclass ~ .,
+  data   = train_stage2,
+  family = binomial()
+)
+
+# predict on test set
+test_prob_stage2 <- predict(stage2_fit, newdata = test_stage2, type = "response")
+
+b_levels <- levels(train_stage2$bclass)
+
+test_pred_class_stage2 <- factor(
+  ifelse(test_prob_stage2 > 0.5, b_levels[2], b_levels[1]),
+  levels = b_levels
+)
+
+results_stage2 <- tibble(
+  bclass      = test_stage2$bclass,
+  .pred_class = test_pred_class_stage2
+)
+
+acc_stage2 <- accuracy(results_stage2, truth = bclass, estimate = .pred_class)
+acc_stage2
+
 ```
