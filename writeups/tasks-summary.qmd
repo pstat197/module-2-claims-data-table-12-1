@@ -1,6 +1,6 @@
 ---
 title: "Summary of exploratory tasks"
-author: 'YOUR NAMES HERE'
+author: 'Max Chang, Sam Caruthers, Kaeya Mehta, Minu Pabbathi'
 date: today
 ---
 
@@ -13,13 +13,13 @@ Does including header content improve predictions? Answer the question and provi
 Do bigrams capture additional information relevant to the classification of interest? Answer the question, **briefly** describe what analysis you conducted to arrive at your answer, and provide quantitative evidence supporting your answer.
 
 ### Neural net
-
-Summarize the neural network model you trained by desribing:
-
+Summarize the neural network model you trained by describing:
+We trained a neural network using Keras in R with header-augmented text preprocessing (from Task 1). The model achieved 77.86% test accuracy, substantially exceeding the Task 1 logistic PCR baseline of 61.6%.
 -   architecture
-
+The network consists of three hidden layers with 64, 32, and 16 neurons respectively, each using ReLU activation. Dropout layers (rates: 30%, 30%, 20%, 20%) were added between layers to prevent overfitting. The input layer uses TF-IDF text vectorization with a vocabulary of 5,000 tokens, and the output layer uses sigmoid activation for binary classification. Total parameters: 322,689.
 -   optimization and loss
-
+We used the Adam optimizer with a learning rate of 0.001 and binary cross-entropy as the loss function. The model was trained with a batch size of 32 and employed early stopping with patience of 5 epochs, monitoring validation loss.
 -   training epochs
-
+The model trained for 13 epochs before early stopping was triggered. Training accuracy reached approximately 91%, while validation accuracy plateaued around 70-77%, indicating the early stopping successfully prevented overfitting.
 -   predictive accuracy
+The model achieved 77.86% accuracy on the test set (n=429), with precision of 0.84 and recall of 0.72 (F1-score: 0.77). This represents a 16.26 percentage point improvement over the Task 1 baseline, which meets the requirement to perform at least as well as principal component logistic regression.
