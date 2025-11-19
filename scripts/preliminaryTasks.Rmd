@@ -74,13 +74,22 @@ nlp_fn <- function(parse_data.out){
 # clean_df <- claims_test %>%
 #   parse_data() %>%
 #   select(.id, bclass, text_clean)
+#load('../data/claims-raw.RData')
+#claims_clean <- claims_raw %>%
+ # parse_data()
+
 load('../data/claims-raw.RData')
+
+# use a smaller subset for Task 1 and Task 2 to avoid crashing
+set.seed(123)
 claims_clean <- claims_raw %>%
+  slice_sample(n = 400) %>%   # try 300–500; increase only if your machine handles it
   parse_data()
 ```
 
 ## Logistic PCR
 
+# run not this chunk but the one below 
 ```{r}
 text_features <- nlp_fn(claims_clean)
 model_df <- text_features %>%
@@ -127,7 +136,7 @@ accuracy(results, truth = bclass, estimate = .pred_class)
 # 0.616
 ```
 
-
+# this one 
 ```{r}
 text_features <- nlp_fn(claims_clean)
 model_df <- text_features %>%
@@ -322,9 +331,16 @@ acc_word
 ```{r}
 # --- Predicted log-odds from word-only model ---
 
-# training probabilities
-train_prob_word <- predict(final_fit_word, train_word_df, type = "prob")$.pred_1
-test_prob_word  <- predict(final_fit_word, test_word_df,  type = "prob")$.pred_1
+# probabilities for each class
+train_prob_df <- predict(final_fit_word, train_word_df, type = "prob")
+test_prob_df  <- predict(final_fit_word, test_word_df,  type = "prob")
+
+# check column names if you're curious:
+# names(train_prob_df)
+
+# take the probability of the "positive" class = 2nd level of bclass
+train_prob_word <- train_prob_df %>% dplyr::pull(2)
+test_prob_word  <- test_prob_df  %>% dplyr::pull(2)
 
 # safe logit function (avoid log(0))
 logit <- function(p) {
@@ -335,14 +351,21 @@ logit <- function(p) {
 
 train_logit_word <- logit(train_prob_word)
 test_logit_word  <- logit(test_prob_word)
-
 ```
+
+```{r}
+# Sanity check that vector is not 0
+length(train_logit_word)
+nrow(train_text)
+```
+
 
 5. PCA on bigram TF–IDF and build stage-2 design matrices
 
 ```{r}
-# --- Align bigram features with the same train/test rows ---
+# --- Align bigram features with the same train/test rows AND run PCA ---
 
+# 1) Align bigram features with train/test IDs
 train_bigram <- train_text %>%
   select(.id, bclass) %>%
   left_join(bigram_features, by = c(".id", "bclass"))
@@ -351,7 +374,7 @@ test_bigram <- test_text %>%
   select(.id, bclass) %>%
   left_join(bigram_features, by = c(".id", "bclass"))
 
-# bigram matrices (drop .id, label)
+# 2) Bigram matrices (drop .id, label)
 x_bigram_train <- train_bigram %>%
   select(-.id, -bclass) %>%
   as.matrix()
@@ -360,16 +383,23 @@ x_bigram_test <- test_bigram %>%
   select(-.id, -bclass) %>%
   as.matrix()
 
-# PCA on bigrams
+# 3) Remove zero-variance / constant columns BEFORE PCA
+col_sd <- apply(x_bigram_train, 2, sd, na.rm = TRUE)
+keep_cols <- which(col_sd > 0)
+
+x_bigram_train2 <- x_bigram_train[, keep_cols, drop = FALSE]
+x_bigram_test2  <- x_bigram_test[,  keep_cols, drop = FALSE]
+
+# 4) PCA on bigrams (reduced matrix)
 set.seed(123)
-bigram_pca <- prcomp(x_bigram_train, center = TRUE, scale. = TRUE)
+bigram_pca <- prcomp(x_bigram_train2, center = TRUE, scale. = TRUE)
 
 k_bigram <- min(50, ncol(bigram_pca$x))  # number of PCs to keep
 
 z_bigram_train <- bigram_pca$x[, 1:k_bigram, drop = FALSE]
-z_bigram_test  <- predict(bigram_pca, newdata = x_bigram_test)[, 1:k_bigram, drop = FALSE]
+z_bigram_test  <- predict(bigram_pca, newdata = x_bigram_test2)[, 1:k_bigram, drop = FALSE]
 
-# assemble stage-2 train/test data
+# 5) Assemble stage-2 train/test data
 train_stage2 <- as_tibble(z_bigram_train) %>%
   mutate(
     bclass     = train_text$bclass,
@@ -382,7 +412,7 @@ test_stage2 <- as_tibble(z_bigram_test) %>%
     logit_word = test_logit_word
   )
 
-# name PCs nicely and put outcome first
+# 6) Name PCs nicely and put outcome first
 pc_names <- paste0("PC_bigram_", 1:k_bigram)
 names(train_stage2)[1:k_bigram] <- pc_names
 names(test_stage2)[1:k_bigram]  <- pc_names
@@ -391,6 +421,7 @@ train_stage2 <- train_stage2 %>% relocate(bclass)
 test_stage2  <- test_stage2  %>% relocate(bclass)
 
 ```
+
 
 6. Second-stage logistic regression: logit + bigram PCs
 
@@ -426,9 +457,3 @@ acc_stage2 <- accuracy(results_stage2, truth = bclass, estimate = .pred_class)
 acc_stage2
 
 ```
-
-
-```{r}
-getwd()
-```
-
