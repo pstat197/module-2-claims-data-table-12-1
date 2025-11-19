@@ -102,11 +102,16 @@ claims_clean <- claims_raw %>%
 ## Logistic PCR
 
 # run not this chunk but the one below 
+
+
+# this one 
 ```{r}
 text_features <- nlp_fn(claims_clean)
 model_df <- text_features %>%
   select(-.id)
+```
 
+```{r}
 model_df$bclass <- as.factor(model_df$bclass)
 
 set.seed(123)
@@ -131,7 +136,24 @@ pcr_wf <- workflow() %>%
   add_recipe(pcr_recipe) %>%
   add_model(logistic_spec)
 
-final_fit <- fit(pcr_wf, train_df)
+set.seed(123)
+folds <- vfold_cv(train_df, v = 5, strata = bclass)
+
+pca_grid <- tibble(num_comp = c(10, 20, 50, 100, 200))
+
+tune_res <- tune_grid(
+  pcr_wf,
+  resamples = folds,
+  grid = pca_grid,
+  metrics = metric_set(accuracy)
+)
+
+best_pcs <- select_best(tune_res, metric = "accuracy")
+best_pcs
+
+final_wf <- finalize_workflow(pcr_wf, best_pcs)
+
+final_fit <- fit(final_wf, train_df)
 
 # Predictions (class)
 pred_class <- predict(final_fit, test_df)
@@ -146,29 +168,86 @@ results <- bind_cols(bclass, pred_class, pred_prob) %>%
 
 # Accuracy
 accuracy(results, truth = bclass, estimate = .pred_class)
-# 0.616
+#
 ```
 
-# this one 
+## Preliminary task 2 
+
+1. Bigram tokenization and TF–IDF
+
+Add a bigram nlp function that parallels your nlp_fn():
+
 ```{r}
+# --- Task 2: Bigram tokenization and TF–IDF ---
+
+nlp_fn_bigrams <- function(parse_data.out) {
+  parse_data.out %>%
+    unnest_tokens(
+      output = bigram,
+      input  = text_clean,
+      token  = "ngrams",
+      n      = 2
+    ) %>%
+    # optional cleanup: drop bigrams with digits or punctuation
+    filter(!str_detect(bigram, "[0-9]"),
+           !str_detect(bigram, "[[:punct:]]")) %>%
+    count(.id, bclass, bigram, name = "n") %>%
+    bind_tf_idf(
+      term     = bigram,
+      document = .id,
+      n        = n
+    ) %>%
+    pivot_wider(
+      id_cols     = c(".id", "bclass"),
+      names_from  = "bigram",
+      values_from = "tf_idf",
+      values_fill = 0
+    )
+}
+
+# recompute word-level features to be explicit (safe even if already done)
 text_features <- nlp_fn(claims_clean)
-model_df <- text_features %>%
-  select(-.id)
+
+# bigram-level features
+bigram_features <- nlp_fn_bigrams(claims_clean)
+
+
 ```
 
+ˆ
+2. Create a consistent train/test split by ID
+
+2. Train/test split using text_features
 ```{r}
-model_df$bclass <- as.factor(model_df$bclass)
+# IDs + label for splitting
+set.seed(123)
+split2 <- initial_split(text_features, strata = bclass)
+
+train_text <- training(split2)
+test_text  <- testing(split2)
+
+# data frames for word-level modeling (drop .id)
+train_word_df <- train_text %>% select(-.id)
+test_word_df  <- test_text  %>% select(-.id)
+
+train_word_df$bclass <- as.factor(train_word_df$bclass)
+test_word_df$bclass  <- as.factor(test_word_df$bclass)
+
+
+```
+3. Word-only logistic PCR (baseline for Task 2)
+
+```{r}
+# --- Word-only logistic PCR (baseline) ---
+
+# --- Word-only logistic PCR (baseline with tuning) ---
 
 set.seed(123)
-split <- initial_split(model_df, strata = bclass)
-train_df <- training(split)
-test_df <- testing(split)
-
-# Recipe with fixed PCA components (no tuning)
-pcr_recipe <- recipe(bclass ~ ., data = train_df) %>%
+pcr_recipe_word <- recipe(bclass ~ ., data = train_word_df) %>%
   step_zv(all_predictors()) %>%
   step_normalize(all_predictors()) %>%
-  step_pca(all_predictors(), num_comp = 50)
+  # make num_comp tunable instead of fixed at 50
+  step_pca(all_predictors(), num_comp = tune())
 
 # Logistic regression model
 logistic_spec <- logistic_reg(
@@ -178,9 +257,8 @@ logistic_spec <- logistic_reg(
 ) %>%
   set_engine("glmnet")
 
-# Workflow
-pcr_wf <- workflow() %>%
-  add_recipe(pcr_recipe) %>%
+pcr_wf_word <- workflow() %>%
+  add_recipe(pcr_recipe_word) %>%
   add_model(logistic_spec)
 
 # Fit the model directly
@@ -317,6 +395,8 @@ results_word <- bind_cols(
 
 acc_word <- accuracy(results_word, truth = bclass, estimate = .pred_class)
 acc_word
+
+
 ```
 
 4. Get predicted log-odds (logit) from the word model
@@ -387,7 +467,7 @@ x_bigram_test2  <- x_bigram_test[,  keep_cols, drop = FALSE]
 set.seed(123)
 bigram_pca <- prcomp(x_bigram_train2, center = TRUE, scale. = TRUE)
 
-k_bigram <- min(50, ncol(bigram_pca$x)) # number of PCs to keep
+k_bigram <- min(50, ncol(bigram_pca$x))  # number of PCs to keep
 
 z_bigram_train <- bigram_pca$x[, 1:k_bigram, drop = FALSE]
 z_bigram_test  <- predict(bigram_pca, newdata = x_bigram_test2)[, 1:k_bigram, drop = FALSE]
@@ -408,10 +488,11 @@ test_stage2 <- as_tibble(z_bigram_test) %>%
 # 6) Name PCs nicely and put outcome first
 pc_names <- paste0("PC_bigram_", 1:k_bigram)
 names(train_stage2)[1:k_bigram] <- pc_names
-names(test_stage2)[1:k_bigram] <- pc_names
+names(test_stage2)[1:k_bigram]  <- pc_names
 
 train_stage2 <- train_stage2 %>% relocate(bclass)
-test_stage2 <- test_stage2 %>% relocate(bclass)
+test_stage2  <- test_stage2  %>% relocate(bclass)
+
 ```
 
 
@@ -421,9 +502,8 @@ test_stage2 <- test_stage2 %>% relocate(bclass)
 # --- Stage-2 logistic regression: logit_word + bigram PCs ---
 
 train_stage2$bclass <- factor(train_stage2$bclass)
-test_stage2$bclass <- factor(test_stage2$bclass,
-  levels = levels(train_stage2$bclass)
-)
+test_stage2$bclass  <- factor(test_stage2$bclass,
+                              levels = levels(train_stage2$bclass))
 
 stage2_fit <- glm(
   bclass ~ .,
