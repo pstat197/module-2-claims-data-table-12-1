@@ -80,11 +80,11 @@ ul.task-list li input[type="checkbox"] {
 
 <section id="html-scraping" class="level3">
 <h3 class="anchored" data-anchor-id="html-scraping">HTML scraping</h3>
-<p>Yes, including header content (h1-h6 elements) in addition to paragraph text improves webpage classification. We augmented the HTML parsing function to extract both <code>&lt;p&gt;</code> and <code>&lt;h1&gt;</code> through <code>&lt;h6&gt;</code> elements, applying standard text preprocessing (URL/email removal, punctuation/digit removal, lemmatization, and stopword filtering). Using logistic principal component regression with 50 principal components on TF-IDF features from the header-augmented text, we achieved 61.6% test accuracy on binary classification. This provided the baseline for subsequent model comparisons and demonstrated that header information contains valuable signals for distinguishing claim-related webpages.</p>
+<p>Does including header content improve predictions? Answer the question and provide quantitative evidence supporting your answer.</p>
 </section>
 <section id="bigrams" class="level3">
 <h3 class="anchored" data-anchor-id="bigrams">Bigrams</h3>
-<p>Yes, bigrams capture additional information beyond single words for webpage classification. We conducted a two-stage logistic regression analysis: First, we fit a logistic PCR model to word-level TF-IDF features (with tuned number of principal components via 5-fold cross-validation). Second, we extracted the predicted log-odds-ratios from this word-only model and combined them with 50 principal components derived from bigram TF-IDF features as inputs to a second-stage logistic regression. The stage-2 model, which incorporates both word-level predictions and bigram information, showed improved performance compared to the word-only baseline, indicating that bigrams capture meaningful two-word phrase patterns (e.g., “health insurance,” “file claim”) that provide additional predictive power beyond individual word frequencies.</p>
+<p>Do bigrams capture additional information relevant to the classification of interest? Answer the question, <strong>briefly</strong> describe what analysis you conducted to arrive at your answer, and provide quantitative evidence supporting your answer.</p>
 </section>
 <section id="neural-net" class="level3">
 <h3 class="anchored" data-anchor-id="neural-net">Neural net</h3>
