@@ -5,46 +5,24 @@ format: html
 
 ## Overview
 
-This document summarizes the methods and findings for Task 4, which involved developing Support Vector Machine (SVM) models for binary and multi-class classification of web page claims data.
+This document summarizes the methods and findings for Task 4. We developed two text-classification models—a binary classifier and a multi-class classifier—using Support Vector Machines (SVMs). The goal was to identify whether HTML pages contain relevant claim content and, if so, to predict the appropriate claim category.
 
 ## Text Preprocessing
-
-The preprocessing pipeline consisted of the following steps:
-
-1. **HTML Parsing**: Extracted text from paragraph and header tags (`p`, `h1`-`h6`) using `rvest`
-2. **Text Cleaning**: 
-   - Removed URLs and email addresses
-   - Removed punctuation, digits, and special symbols
-   - Converted to lowercase
-   - Normalized whitespace
-3. **Tokenization**: Split text into individual word tokens using `tidytext::unnest_tokens`
-4. **Stopword Removal**: Filtered out common English stopwords
-5. **Lemmatization**: Reduced words to their base forms using `textstem::lemmatize_words`
-6. **Feature Selection**: Selected top 1000 most frequent terms from training data
-7. **TF-IDF Vectorization**: Calculated term frequency-inverse document frequency scores
-8. **Z-score Standardization**: Applied z-score normalization to all features using training set parameters
+In SVM:
+We applied a standardized preprocessing pipeline to all documents. First, we parsed HTML files to extract text from paragraph and header tags. We then cleaned the text by removing URLs, punctuation, digits, and extra whitespace, followed by lowercasing. The cleaned text was tokenized, stopwords were removed, and tokens were lemmatized. From the training data, we selected the top 1000 most frequent terms and computed TF-IDF features. Finally, we applied z-score scaling to all features using training-set statistics.
 
 ## Predictive Models
 
-### Binary Classification Model
+We trained two linear-kernel SVM models using the 1000 TF-IDF features:
 
-- **Algorithm**: Support Vector Machine with linear kernel
-- **Implementation**: `e1071::svm`
-- **Hyperparameters**: Cost = 1
-- **Target Variable**: `bclass` (Relevant claim content vs. N/A: No relevant content)
-- **Features**: 1000 TF-IDF features (z-score normalized)
+- **Binary Classification Model**: Predicts whether a document contains relevant claim content.
+- **Multi-class Classification Model**: Assigns documents to one of several claim categories.
 
-### Multi-class Classification Model
-
-- **Algorithm**: Support Vector Machine with linear kernel
-- **Implementation**: `e1071::svm` (one-vs-one strategy)
-- **Hyperparameters**: Cost = 1
-- **Target Variable**: `mclass` (multiple claim categories)
-- **Features**: 1000 TF-IDF features (z-score normalized)
+Both models used standard linear SVMs without additional hyperparameter tuning.
 
 ## Model Performance
 
-Model performance was estimated using an 80/20 train-validation split on the training data:
+Using an 80/20 train-validation split, we estimated predictive accuracy for each model:
 
 | Model | Estimated Accuracy |
 |-------|-------------------|
@@ -53,17 +31,6 @@ Model performance was estimated using an 80/20 train-validation split on the tra
 
 ## Key Findings
 
-1. **Binary Model Performance**: The binary SVM model achieved approximately 70% accuracy in distinguishing between pages with relevant claim content and those without, representing a substantial improvement over the baseline logistic PCR model (61.6% from Task 1).
-
-2. **Multi-class Model Performance**: The multi-class model achieved 68% accuracy across multiple claim categories, demonstrating reasonable performance on this more challenging classification task.
-
-3. **Feature Engineering**: The combination of TF-IDF vectorization with z-score standardization provided effective feature representation for the SVM models.
-
-4. **Model Simplicity**: Linear kernel SVMs with default hyperparameters provided competitive performance without extensive tuning, suggesting that the feature engineering was effective.
-
-## Deliverables
-
-- **Trained Models**: Saved in `results/svm-binary.rds` and `results/svm-multiclass.rds`
-- **Test Predictions**: Saved in `results/preds-group12.RData`
-- **Deployment Script**: `scripts/deploy_svm.R` demonstrates model usage
-- **Training Code**: `scripts/primaryTaskSVM.Rmd` contains full implementation
+1. The binary SVM achieved roughly 70% accuracy, outperforming earlier baseline approaches from Task 1.
+2. The multi-class SVM reached 68% accuracy, showing reasonable performance given the more challenging prediction task.
+3. TF-IDF features combined with z-score scaling provided effective representations, allowing simple linear SVMs to perform well without extensive tuning.
