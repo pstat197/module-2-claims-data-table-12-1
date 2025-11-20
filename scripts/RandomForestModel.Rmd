@@ -1,0 +1,218 @@
+---
+title: "Random Forest Model"
+author: "Kaeya Mehta"
+date: "2025-11-19"
+output: html_document
+---
+
+# Libraries 
+
+```{r}
+require(tidyverse)
+require(tidytext)
+require(textstem)
+require(rvest)
+require(qdapRegex)
+require(stopwords)
+require(tokenizers)
+library(caret)
+library(tidymodels)
+library(dplyr)
+library(randomForest)
+```
+
+
+# Preprocessing
+
+Load raw data
+```{r}
+load("/Users/kaeya/PSTAT 197A/module-2-claims-data-table-12-1/data/claims-raw.RData")
+load("/Users/kaeya/PSTAT 197A/module-2-claims-data-table-12-1/data/claims-test.RData")
+```
+
+
+Functions to preprocess
+```{r}
+
+# function to parse html and clean text
+parse_fn <- function(.html) {
+  read_html(.html) %>%
+    html_elements("p, h1, h2, h3, h4, h5, h6") %>%
+    html_text2() %>%
+    str_c(collapse = " ") %>%
+    rm_url() %>%
+    rm_email() %>%
+    str_remove_all("'") %>%
+    str_replace_all(paste(
+      c(
+        "\n",
+        "[[:punct:]]",
+        "nbsp",
+        "[[:digit:]]",
+        "[[:symbol:]]"
+      ),
+      collapse = "|"
+    ), " ") %>%
+    str_replace_all("([a-z])([A-Z])", "\\1 \\2") %>%
+    tolower() %>%
+    str_replace_all("\\s+", " ")
+}
+
+# function to apply to claims data
+parse_data <- function(.df) {
+  out <- .df %>%
+    filter(str_detect(text_tmp, "<!")) %>%
+    rowwise() %>%
+    mutate(text_clean = parse_fn(text_tmp)) %>%
+    unnest(text_clean)
+  return(out)
+}
+
+```
+
+
+Cleaned data
+```{r}
+claims_clean_train <- parse_data(claims_raw)
+claims_clean_test <- parse_data(claims_raw)
+```
+
+
+Tokenization for Train
+```{r}
+stpwrd <- stop_words %>%
+  pull(word) %>%
+  str_remove_all("[[:punct:]]")
+
+tokens_all <- claims_clean_train %>%
+  select(.id, bclass, mclass, text_clean) %>%    
+  unnest_tokens(
+    output = token,
+    input  = text_clean,
+    token  = "words",
+    stopwords = stpwrd
+  ) %>%
+  mutate(token = lemmatize_words(token)) %>%     
+  filter(str_length(token) > 2)  
+
+tf_counts <- tokens_all %>%
+  dplyr::count(.id, bclass, token, name = "n")
+
+claims_tfidf_binary <- tf_counts %>%
+  bind_tf_idf(
+    term     = token,
+    document = .id,
+    n        = n
+  )
+
+claims_training_binary <- claims_tfidf_binary %>%
+  tidyr::pivot_wider(
+    id_cols     = c(.id, bclass),
+    names_from  = token,
+    values_from = tf_idf,
+    values_fill = 0
+  )
+
+token_cols <- setdiff(names(claims_training_binary), c(".id", "bclass"))
+
+nz_counts <- colSums(claims_training_binary[, token_cols] != 0)
+keep_tokens <- names(nz_counts)[nz_counts >= 5]
+
+claims_training_small <- claims_training_binary %>%
+  select(bclass, all_of(keep_tokens))
+
+claims_training_small
+claims_training_binary
+
+dim(claims_training_binary)
+```
+
+
+Tokenization for Test
+```{r}
+stpwrd <- stop_words %>%
+  pull(word) %>%
+  str_remove_all("[[:punct:]]")
+
+tokens_all <- claims_clean_test %>%
+  select(.id, bclass, mclass, text_clean) %>%    
+  unnest_tokens(
+    output = token,
+    input  = text_clean,
+    token  = "words",
+    stopwords = stpwrd
+  ) %>%
+  mutate(token = lemmatize_words(token)) %>%     
+  filter(str_length(token) > 2)  
+
+tf_counts <- tokens_all %>%
+  dplyr::count(.id, bclass, token, name = "n")
+
+claims_tfidf_binary <- tf_counts %>%
+  bind_tf_idf(
+    term     = token,
+    document = .id,
+    n        = n
+  )
+
+claims_testing_binary <- claims_tfidf_binary %>%
+  tidyr::pivot_wider(
+    id_cols     = c(.id, bclass),
+    names_from  = token,
+    values_from = tf_idf,
+    values_fill = 0
+  )
+
+token_cols <- setdiff(names(claims_testing_binary), c(".id", "bclass"))
+
+nz_counts <- colSums(claims_testing_binary[, token_cols] != 0)
+keep_tokens <- names(nz_counts)[nz_counts >= 5]
+
+length(claims_testing_binary)
+length(keep_tokens)
+
+claims_testing_small <- claims_testing_binary %>%
+  select(bclass, all_of(keep_tokens))
+
+claims_testing_small
+
+```
+
+
+
+
+```{r}
+set.seed(123)
+colnames(claims_training_small) <- make.names(colnames(claims_training_small))
+
+claims_training_small$bclass <- factor(claims_training_small$bclass)
+
+rf.claims_training_binary = randomForest(bclass ~ ., data=claims_training_small, importance=TRUE, ntree = 100)
+```
+
+
+```{r}
+colnames(claims_testing_small) <- make.names(colnames(claims_testing_small))
+summary(rf.claims_training_binary)
+preds <- predict(rf.claims_training_binary, newdata = claims_testing_small)
+```
+
+```{r}
+head(preds)
+```
+
+```{r}
+conf <- table(preds, claims_testing_small$bclass)
+conf
+
+accuracy <- sum(diag(conf)) / sum(conf)
+accuracy
+```
+
+
+
+
+
+
+
+
