@@ -1,0 +1,284 @@
+---
+title: "Primary Task: SVM Model"
+output: html_document
+---
+
+```{r setup, message=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(textstem)
+library(rvest)
+library(qdapRegex)
+library(stopwords)
+library(tidytext)
+library(tokenizers)
+library(e1071)
+```
+
+# Data Loading
+
+```{r load_data}
+# Load training data
+load("../data/claims-raw.RData")
+
+# Check dimensions
+dim(claims_raw)
+dim(claims_test)
+```
+
+# Preprocessing Functions
+
+```{r preprocessing_fns}
+# function to parse html and clean text (including headers)
+parse_fn <- function(.html) {
+  read_html(.html) %>%
+    html_elements("p, h1, h2, h3, h4, h5, h6") %>%
+    html_text2() %>%
+    str_c(collapse = " ") %>%
+    rm_url() %>%
+    rm_email() %>%
+    str_remove_all("'") %>%
+    str_replace_all(paste(
+      c(
+        "\n",
+        "[[:punct:]]",
+        "nbsp",
+        "[[:digit:]]",
+        "[[:symbol:]]"
+      ),
+      collapse = "|"
+    ), " ") %>%
+    str_replace_all("([a-z])([A-Z])", "\\1 \\2") %>%
+    tolower() %>%
+    str_replace_all("\\s+", " ")
+}
+
+# function to apply to claims data
+parse_data <- function(.df) {
+  out <- .df %>%
+    filter(str_detect(text_tmp, "<!")) %>%
+    rowwise() %>%
+    mutate(text_clean = parse_fn(text_tmp)) %>%
+    unnest(text_clean)
+  return(out)
+}
+
+# Clean training data
+claims_clean <- claims_raw %>%
+  parse_data()
+
+# Clean test data
+claims_test_clean <- claims_test %>%
+  parse_data()
+```
+
+# Feature Engineering (NLP)
+```{r nlp_features}
+# Tokenization and Lemmatization Function
+get_tokens <- function(df) {
+  df %>%
+    unnest_tokens(
+      output = token,
+      input = text_clean,
+      token = "words",
+      stopwords = str_remove_all(stop_words$word, "[[:punct:]]")
+    ) %>%
+    mutate(token.lem = lemmatize_words(token)) %>%
+    filter(str_length(token.lem) > 2)
+}
+
+train_tokens <- get_tokens(claims_clean)
+test_tokens <- get_tokens(claims_test_clean)
+
+# ------------------------------
+# 1. TF-IDF on TRAINING DATA
+# ------------------------------
+train_tfidf <- train_tokens %>%
+  count(.id, token.lem, name = "n") %>%
+  bind_tf_idf(token.lem, .id, n)
+
+# ------------------------------
+# 2. Select Top 1000 Words
+# ------------------------------
+top_terms <- train_tokens %>%
+  count(token.lem, sort = TRUE) %>%
+  slice_head(n = 1000) %>%
+  pull(token.lem)
+
+# ------------------------------
+# 3. Pivot TRAIN matrix
+# ------------------------------
+train_features <- train_tfidf %>%
+  filter(token.lem %in% top_terms) %>%
+  pivot_wider(
+    id_cols = .id,
+    names_from = token.lem,
+    values_from = tf_idf,
+    values_fill = 0
+  ) %>%
+  left_join(claims_clean %>% select(.id, bclass, mclass), by = ".id")
+
+# ------------------------------
+# 4. Pivot TEST matrix
+# ------------------------------
+test_features_raw <- test_tokens %>%
+  filter(token.lem %in% top_terms) %>%
+  count(.id, token.lem, name = "n") %>%
+  bind_tf_idf(token.lem, .id, n) %>%
+  pivot_wider(
+    id_cols = .id,
+    names_from = token.lem,
+    values_from = tf_idf,
+    values_fill = 0
+  )
+
+# ------------------------------
+# 5. Ensure ALL training columns exist in test set
+# ------------------------------
+train_cols <- names(train_features %>% select(-bclass, -mclass))
+test_cols  <- names(test_features_raw)
+
+missing_cols <- setdiff(train_cols, test_cols)
+
+for (col in missing_cols) {
+  test_features_raw[[col]] <- 0
+}
+
+# Drop any extra columns test has that training does not
+test_features_raw <- test_features_raw %>% select(all_of(train_cols))
+
+# ------------------------------
+# 6. Ensure ALL test IDs appear (fixes missing rows)
+# ------------------------------
+all_test_ids <- claims_test_clean$.id
+
+test_features <- tibble(.id = all_test_ids) %>%
+  left_join(test_features_raw, by = ".id") %>%
+  mutate(across(where(is.numeric), ~replace_na(., 0)))
+
+# Align columns (add missing columns to test, remove extra)
+missing_cols <- setdiff(names(train_features), names(test_features))
+# Remove target columns from missing_cols
+missing_cols <- setdiff(missing_cols, c("bclass", "mclass"))
+
+for(col in missing_cols) {
+  test_features[[col]] <- 0
+}
+
+# Ensure order
+test_features <- test_features %>%
+  select(all_of(names(train_features %>% select(-bclass, -mclass))))
+
+# Handle NAs (if any id was dropped due to no tokens)
+# We need to make sure all IDs in claims_test are in test_features
+all_test_ids <- claims_test_clean$.id
+test_features <- tibble(.id = all_test_ids) %>%
+  left_join(test_features, by = ".id") %>%
+  mutate(across(where(is.numeric), ~replace_na(., 0)))
+
+```
+
+```{r standardization}
+# Standardization (Z-score)
+# We need to scale the features. We'll use the training parameters to scale test data.
+train_mat <- train_features %>% select(-.id, -bclass, -mclass) %>% as.matrix()
+test_mat <- test_features %>% select(-.id) %>% as.matrix()
+
+# Scale training data
+train_scaled <- scale(train_mat)
+train_center <- attr(train_scaled, "scaled:center")
+train_scale <- attr(train_scaled, "scaled:scale")
+
+# Scale test data using training parameters
+test_scaled <- scale(test_mat, center = train_center, scale = train_scale)
+
+# Handle constant columns (scale = 0) -> replace with 0
+test_scaled[, train_scale == 0] <- 0
+train_scaled[, train_scale == 0] <- 0
+
+# Prepare dataframes for e1071
+train_df_svm <- as.data.frame(train_scaled)
+train_df_svm$bclass <- train_features$bclass
+train_df_svm$mclass <- train_features$mclass
+
+test_df_svm <- as.data.frame(test_scaled)
+```
+
+# Validation (Accuracy Estimation)
+
+To estimate the accuracy of our models, we'll perform a simple 80/20 split on the training data.
+
+```{r validation}
+set.seed(123)
+# Create split
+split <- initial_split(train_df_svm, prop = 0.8, strata = bclass)
+train_split <- training(split)
+val_split <- testing(split)
+
+# Binary Validation
+svm_binary_val <- svm(bclass ~ ., data = train_split %>% select(-mclass), 
+                      kernel = "linear", cost = 1)
+binary_val_pred <- predict(svm_binary_val, val_split)
+binary_acc <- mean(binary_val_pred == val_split$bclass)
+cat("Estimated Binary Accuracy:", binary_acc, "\n")
+
+# Multi-class Validation
+svm_mclass_val <- svm(mclass ~ ., data = train_split %>% select(-bclass), 
+                      kernel = "linear", cost = 1)
+mclass_val_pred <- predict(svm_mclass_val, val_split)
+mclass_acc <- mean(mclass_val_pred == val_split$mclass)
+cat("Estimated Multi-class Accuracy:", mclass_acc, "\n")
+
+# Summary of Model Performance
+cat("\n=== Model Performance Summary ===\n")
+cat(sprintf("Binary Classification Accuracy:      %.2f%%\n", binary_acc * 100))
+cat(sprintf("Multi-class Classification Accuracy:  %.2f%%\n", mclass_acc * 100))
+```
+
+# Binary Classification (SVM)
+
+```{r binary_svm}
+set.seed(123)
+library(e1071)
+
+# Train SVM (Linear Kernel)
+# type = "C-classification" for factor response
+svm_binary <- svm(bclass ~ ., data = train_df_svm %>% select(-mclass), 
+                  kernel = "linear", cost = 1, probability = TRUE)
+
+# Predict
+binary_pred_class <- predict(svm_binary, test_df_svm)
+```
+
+# Multi-class Classification (SVM)
+
+```{r multiclass_svm}
+set.seed(123)
+
+# Train SVM (Linear Kernel)
+svm_mclass <- svm(mclass ~ ., data = train_df_svm %>% select(-bclass), 
+                  kernel = "linear", cost = 1, probability = TRUE)
+
+# Predict
+mclass_pred_class <- predict(svm_mclass, test_df_svm)
+```
+
+# Export Results
+
+```{r export}
+# Combine predictions
+pred_df <- tibble(
+  .id = test_features$.id,
+  bclass.pred = binary_pred_class,
+  mclass.pred = mclass_pred_class
+)
+
+# Save predictions
+save(pred_df, file = "../results/preds-svm.RData")
+
+# Save models
+saveRDS(svm_binary, "../results/svm-binary.rds")
+saveRDS(svm_mclass, "../results/svm-multiclass.rds")
+
+cat("Predictions and models saved.\n")
+```

@@ -342,20 +342,19 @@ test_word_df$bclass <- as.factor(test_word_df$bclass)
 3. Word-only logistic PCR (baseline for Task 2)
 
 ```{r}
-# --- Word-only logistic PCR (baseline) ---
-
 # --- Word-only logistic PCR (baseline with tuning) ---
 
 set.seed(123)
+# 1. Recipe stays the same (tuning num_comp)
 pcr_recipe_word <- recipe(bclass ~ ., data = train_word_df) %>%
   step_zv(all_predictors()) %>%
   step_normalize(all_predictors()) %>%
-  # make num_comp tunable instead of fixed at 50
   step_pca(all_predictors(), num_comp = tune())
 
+# 2. MODIFY MODEL: Change 'penalty = 0.01' to 'penalty = tune()'
 logistic_spec <- logistic_reg(
   mode    = "classification",
-  penalty = 0.01,
+  penalty = tune(),     # <--- CHANGED THIS
   mixture = 0
 ) %>%
   set_engine("glmnet")
@@ -367,9 +366,13 @@ pcr_wf_word <- workflow() %>%
 set.seed(123)
 folds_word <- vfold_cv(train_word_df, v = 5, strata = bclass)
 
-# grid of PCA components to try
-pca_grid <- tibble(num_comp = c(10, 20, 50, 100, 200))
+# 3. MODIFY GRID: Add the fixed penalty value here
+pca_grid <- tibble(
+  num_comp = c(10, 20, 50, 100, 200),
+  penalty  = 0.01       # <--- ADDED THIS (Hardcodes the value)
+)
 
+# 4. Run tuning (should work now)
 tune_res_word <- tune_grid(
   pcr_wf_word,
   resamples = folds_word,
@@ -378,7 +381,7 @@ tune_res_word <- tune_grid(
 )
 
 best_pcs_word <- select_best(tune_res_word, metric = "accuracy")
-best_pcs_word
+print(best_pcs_word)
 
 final_wf_word <- finalize_workflow(pcr_wf_word, best_pcs_word)
 
@@ -547,7 +550,7 @@ library(tensorflow)
 We'll use the `claims_clean` data from Task 1 (already includes headers).
 
 ```{r}
-set.seed(110122)
+set.seed(123)
 partitions <- claims_clean %>%
   initial_split(prop = 0.8, strata = bclass)
 
