@@ -66,54 +66,24 @@ ul.task-list li input[type="checkbox"] {
 
 <section id="overview" class="level2">
 <h2 class="anchored" data-anchor-id="overview">Overview</h2>
-<p>This document summarizes the methods and findings for Task 4, which involved developing Support Vector Machine (SVM) models for binary and multi-class classification of web page claims data.</p>
+<p>This document summarizes the methods and findings for Task 4. We developed two text-classification models—a binary classifier and a multi-class classifier—using Support Vector Machines (SVMs). The goal was to identify whether HTML pages contain relevant claim content and, if so, to predict the appropriate claim category.</p>
 </section>
 <section id="text-preprocessing" class="level2">
 <h2 class="anchored" data-anchor-id="text-preprocessing">Text Preprocessing</h2>
-<p>The preprocessing pipeline consisted of the following steps:</p>
-<ol type="1">
-<li><strong>HTML Parsing</strong>: Extracted text from paragraph and header tags (<code>p</code>, <code>h1</code>-<code>h6</code>) using <code>rvest</code></li>
-<li><strong>Text Cleaning</strong>:
-<ul>
-<li>Removed URLs and email addresses</li>
-<li>Removed punctuation, digits, and special symbols</li>
-<li>Converted to lowercase</li>
-<li>Normalized whitespace</li>
-</ul></li>
-<li><strong>Tokenization</strong>: Split text into individual word tokens using <code>tidytext::unnest_tokens</code></li>
-<li><strong>Stopword Removal</strong>: Filtered out common English stopwords</li>
-<li><strong>Lemmatization</strong>: Reduced words to their base forms using <code>textstem::lemmatize_words</code></li>
-<li><strong>Feature Selection</strong>: Selected top 1000 most frequent terms from training data</li>
-<li><strong>TF-IDF Vectorization</strong>: Calculated term frequency-inverse document frequency scores</li>
-<li><strong>Z-score Standardization</strong>: Applied z-score normalization to all features using training set parameters</li>
-</ol>
+<p>In SVM: We applied a standardized preprocessing pipeline to all documents. First, we parsed HTML files to extract text from paragraph and header tags. We then cleaned the text by removing URLs, punctuation, digits, and extra whitespace, followed by lowercasing. The cleaned text was tokenized, stopwords were removed, and tokens were lemmatized. From the training data, we selected the top 1000 most frequent terms and computed TF-IDF features. Finally, we applied z-score scaling to all features using training-set statistics.</p>
 </section>
 <section id="predictive-models" class="level2">
 <h2 class="anchored" data-anchor-id="predictive-models">Predictive Models</h2>
-<section id="binary-classification-model" class="level3">
-<h3 class="anchored" data-anchor-id="binary-classification-model">Binary Classification Model</h3>
+<p>We trained two linear-kernel SVM models using the 1000 TF-IDF features:</p>
 <ul>
-<li><strong>Algorithm</strong>: Support Vector Machine with linear kernel</li>
-<li><strong>Implementation</strong>: <code>e1071::svm</code></li>
-<li><strong>Hyperparameters</strong>: Cost = 1</li>
-<li><strong>Target Variable</strong>: <code>bclass</code> (Relevant claim content vs.&nbsp;N/A: No relevant content)</li>
-<li><strong>Features</strong>: 1000 TF-IDF features (z-score normalized)</li>
+<li><strong>Binary Classification Model</strong>: Predicts whether a document contains relevant claim content.</li>
+<li><strong>Multi-class Classification Model</strong>: Assigns documents to one of several claim categories.</li>
 </ul>
-</section>
-<section id="multi-class-classification-model" class="level3">
-<h3 class="anchored" data-anchor-id="multi-class-classification-model">Multi-class Classification Model</h3>
-<ul>
-<li><strong>Algorithm</strong>: Support Vector Machine with linear kernel</li>
-<li><strong>Implementation</strong>: <code>e1071::svm</code> (one-vs-one strategy)</li>
-<li><strong>Hyperparameters</strong>: Cost = 1</li>
-<li><strong>Target Variable</strong>: <code>mclass</code> (multiple claim categories)</li>
-<li><strong>Features</strong>: 1000 TF-IDF features (z-score normalized)</li>
-</ul>
-</section>
+<p>Both models used standard linear SVMs without additional hyperparameter tuning.</p>
 </section>
 <section id="model-performance" class="level2">
 <h2 class="anchored" data-anchor-id="model-performance">Model Performance</h2>
-<p>Model performance was estimated using an 80/20 train-validation split on the training data:</p>
+<p>Using an 80/20 train-validation split, we estimated predictive accuracy for each model:</p>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -136,20 +106,10 @@ ul.task-list li input[type="checkbox"] {
 <section id="key-findings" class="level2">
 <h2 class="anchored" data-anchor-id="key-findings">Key Findings</h2>
 <ol type="1">
-<li><p><strong>Binary Model Performance</strong>: The binary SVM model achieved approximately 70% accuracy in distinguishing between pages with relevant claim content and those without, representing a substantial improvement over the baseline logistic PCR model (61.6% from Task 1).</p></li>
-<li><p><strong>Multi-class Model Performance</strong>: The multi-class model achieved 68% accuracy across multiple claim categories, demonstrating reasonable performance on this more challenging classification task.</p></li>
-<li><p><strong>Feature Engineering</strong>: The combination of TF-IDF vectorization with z-score standardization provided effective feature representation for the SVM models.</p></li>
-<li><p><strong>Model Simplicity</strong>: Linear kernel SVMs with default hyperparameters provided competitive performance without extensive tuning, suggesting that the feature engineering was effective.</p></li>
+<li>The binary SVM achieved roughly 70% accuracy, outperforming earlier baseline approaches from Task 1.</li>
+<li>The multi-class SVM reached 68% accuracy, showing reasonable performance given the more challenging prediction task.</li>
+<li>TF-IDF features combined with z-score scaling provided effective representations, allowing simple linear SVMs to perform well without extensive tuning.</li>
 </ol>
-</section>
-<section id="deliverables" class="level2">
-<h2 class="anchored" data-anchor-id="deliverables">Deliverables</h2>
-<ul>
-<li><strong>Trained Models</strong>: Saved in <code>results/svm-binary.rds</code> and <code>results/svm-multiclass.rds</code></li>
-<li><strong>Test Predictions</strong>: Saved in <code>results/preds-group12.RData</code></li>
-<li><strong>Deployment Script</strong>: <code>scripts/deploy_svm.R</code> demonstrates model usage</li>
-<li><strong>Training Code</strong>: <code>scripts/primaryTaskSVM.Rmd</code> contains full implementation</li>
-</ul>
 </section>
 
 </main>

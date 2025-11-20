@@ -2,12 +2,12 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.7.32">
+<meta name="generator" content="quarto-1.8.25">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 <meta name="author" content="Max Chang, Sam Caruthers, Kaeya Mehta, Minu Pabbathi">
-<meta name="dcterms.date" content="2025-11-19">
+<meta name="dcterms.date" content="2025-11-20">
 
 <title>Summary of exploratory tasks</title>
 <style>
@@ -28,15 +28,45 @@ ul.task-list li input[type="checkbox"] {
 <script src="tasks-summary_files/libs/clipboard/clipboard.min.js"></script>
 <script src="tasks-summary_files/libs/quarto-html/quarto.js" type="module"></script>
 <script src="tasks-summary_files/libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="tasks-summary_files/libs/quarto-html/axe/axe-check.js" type="module"></script>
 <script src="tasks-summary_files/libs/quarto-html/popper.min.js"></script>
 <script src="tasks-summary_files/libs/quarto-html/tippy.umd.min.js"></script>
 <script src="tasks-summary_files/libs/quarto-html/anchor.min.js"></script>
 <link href="tasks-summary_files/libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="tasks-summary_files/libs/quarto-html/quarto-syntax-highlighting-37eea08aefeeee20ff55810ff984fec1.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<link href="tasks-summary_files/libs/quarto-html/quarto-syntax-highlighting-7b89279ff1a6dce999919e0e67d4d9ec.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="tasks-summary_files/libs/bootstrap/bootstrap.min.js"></script>
 <link href="tasks-summary_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="tasks-summary_files/libs/bootstrap/bootstrap-81267100e462c21b3d6c0d5bf76a3417.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="tasks-summary_files/libs/bootstrap/bootstrap-d6a003b94517c951b2d65075d42fb01b.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 
+  <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+const typesetMath = (el) => {
+  if (window.MathJax) {
+    // MathJax Typeset
+    window.MathJax.typeset([el]);
+  } else if (window.katex) {
+    // KaTeX Render
+    var mathElements = el.getElementsByClassName("math");
+    var macros = [];
+    for (var i = 0; i < mathElements.length; i++) {
+      var texText = mathElements[i].firstChild;
+      if (mathElements[i].tagName == "SPAN" && texText && texText.data) {
+        window.katex.render(texText.data, mathElements[i], {
+          displayMode: mathElements[i].classList.contains('display'),
+          throwOnError: false,
+          macros: macros,
+          fleqn: false
+        });
+      }
+    }
+  }
+}
+window.Quarto = {
+  typesetMath
+};
+</script>
 
 </head>
 
@@ -65,7 +95,7 @@ ul.task-list li input[type="checkbox"] {
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">November 19, 2025</p>
+      <p class="date">November 20, 2025</p>
     </div>
   </div>
   
@@ -80,7 +110,7 @@ ul.task-list li input[type="checkbox"] {
 <section id="html-scraping" class="level3">
 <h3 class="anchored" data-anchor-id="html-scraping">HTML scraping</h3>
 <p>Does including header content improve predictions? Answer the question and provide quantitative evidence supporting your answer.</p>
-<p>Including the header content did not improve predictions. After modifying the pre-processing to add the headers, finding principal components, and fitting a logistic regression model, we got an accuracy of 61.6%, which is only slightly better than chance.</p>
+<p>Including the header content did not improve predictions. After modifying the pre-processing to add the headers, finding principal components, and fitting a logistic regression model, we got an accuracy of 65.9%, which is only slightly better than chance.</p>
 </section>
 <section id="bigrams" class="level3">
 <h3 class="anchored" data-anchor-id="bigrams">Bigrams</h3>
@@ -91,7 +121,7 @@ ul.task-list li input[type="checkbox"] {
 </section>
 <section id="neural-net" class="level3">
 <h3 class="anchored" data-anchor-id="neural-net">Neural net</h3>
-<p>Summarize the neural network model you trained by describing: We trained a neural network using Keras in R with header-augmented text preprocessing (from Task 1). The model achieved 77.86% test accuracy, substantially exceeding the Task 1 logistic PCR baseline of 61.6%. - architecture The network consists of three hidden layers with 64, 32, and 16 neurons respectively, each using ReLU activation. Dropout layers (rates: 30%, 30%, 20%, 20%) were added between layers to prevent overfitting. The input layer uses TF-IDF text vectorization with a vocabulary of 5,000 tokens, and the output layer uses sigmoid activation for binary classification. Total parameters: 322,689. - optimization and loss We used the Adam optimizer with a learning rate of 0.001 and binary cross-entropy as the loss function. The model was trained with a batch size of 32 and employed early stopping with patience of 5 epochs, monitoring validation loss. - training epochs The model trained for 13 epochs before early stopping was triggered. Training accuracy reached approximately 91%, while validation accuracy plateaued around 70-77%, indicating the early stopping successfully prevented overfitting. - predictive accuracy The model achieved 77.86% accuracy on the test set (n=429), with precision of 0.84 and recall of 0.72 (F1-score: 0.77). This represents a 16.26 percentage point improvement over the Task 1 baseline, which meets the requirement to perform at least as well as principal component logistic regression.</p>
+<p>Summarize the neural network model you trained by describing: We trained a neural network using Keras in R with header-augmented text preprocessing (from Task 1). The model achieved 73.4% test accuracy, substantially exceeding the Task 1 logistic PCR baseline of 65.9%. - architecture The network consists of three hidden layers with 64, 32, and 16 neurons respectively, each using ReLU activation. Dropout layers (rates: 30%, 30%, 20%, 20%) were added between layers to prevent overfitting. The input layer uses TF-IDF text vectorization with a vocabulary of 5,000 tokens, and the output layer uses sigmoid activation for binary classification. Total parameters: 322,689. - optimization and loss We used the Adam optimizer with a learning rate of 0.001 and binary cross-entropy as the loss function. The model was trained with a batch size of 32 and employed early stopping with patience of 5 epochs, monitoring validation loss. - training epochs The model trained for 13 epochs before early stopping was triggered. Training accuracy reached approximately 91%, while validation accuracy plateaued around 70-77%, indicating the early stopping successfully prevented overfitting. - predictive accuracy The model achieved 73.4% accuracy on the test set (n=429), with precision of 0.84 and recall of 0.72. This corresponds to an F1-score of <span class="math inline">\(\approx 0.775\)</span>. This performance represents an 8.4 percentage point improvement over the Task 1 logistic PCR baseline of 65.0%, which comfortably meets the requirement to perform at least as well as principal component logistic regression.</p>
 </section>
 
 </main>
@@ -147,13 +177,14 @@ ul.task-list li input[type="checkbox"] {
       e.clearSelection();
     }
     const getTextToCopy = function(trigger) {
-        const codeEl = trigger.previousElementSibling.cloneNode(true);
-        for (const childEl of codeEl.children) {
-          if (isCodeAnnotation(childEl)) {
-            childEl.remove();
-          }
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
         }
-        return codeEl.innerText;
+      }
+      return codeEl.innerText;
     }
     const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
       text: getTextToCopy
