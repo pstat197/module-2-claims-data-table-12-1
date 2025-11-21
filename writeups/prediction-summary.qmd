@@ -1,37 +1,42 @@
 ---
-title: "Predictive modeling of claims status"
-author: 'YOUR NAMES HERE'
+title: "Primary Task: Predictive modeling of claims status"
+author: 'Kaeya Mehta, Max Chang, Minu Pabbathi, Sam Caruthers'
 date: today
 ---
 
 ### Abstract
 
-Provide a 3-5 sentence summary of your work on the primary task. Indicate what input data was used, what method was used for binary class predictions, what method was used for multiclass predictions, and what estimated accuracies were achieved.
-
-> *Header and paragraph content was scraped from the raw webpages and processed into term frequencies of word tokens. For binary classification, a two-layer neural network yielded an estimated 81.4% accuracy; for multiclass classification, a support vector machine gave 78% accuracy.*
+In the primary task, we tested machine learning methods to see which model could best classify webpages based on their content. The data included raw HTML from each webpage, a webpage ID, the binary classification label (Relevant claim content, N/A: No relevant content), the multiclass label (Possible Fatality, Potentially Unlawful Activity, N/A: No relevant content, Other Claim Content, Physical Activity), and a few other features. We preprocessed the text using the TF-IDF method and used it to train and test two models: a Support Vector Machine (SVM) and a Random Forest. The SVM has a 70% accuracy for the binary task and 68% for the multiclass task. The Random Forest has an accuracy of 79.8% for the binary classification and 80.3% for the multiclass classification. Both models performed better than those in Task 1. The SVM was worse than the neural network from Task 3, and the Random Forest was comparable with Task 3 and better than the SVM.
 
 ### Preprocessing
 
-In one paragraph lay out your preprocessing pipeline. No need to provide exact step-by-step detail; just give an overview of the main components:
+In SVM:
+We applied a standardized preprocessing pipeline to all documents. First, we parsed HTML files to extract text from paragraph and header tags. We then cleaned the text by removing URLs, punctuation, digits, and extra whitespace, followed by lowercasing. The cleaned text was tokenized, stopwords were removed, and tokens were lemmatized. From the training data, we selected the top 1000 most frequent terms and computed TF-IDF features. Finally, we applied z-score scaling to all features using training-set statistics.
 
--   what text content was extracted from HTML
-
--   how text was cleaned
-
--   how cleaned text was represented quantitatively
+In Random Forest:
+The Random Forest preprocessing pipeline is very similar to the SVM case. All the HTML files were first parsed to extract paragraph and header tags, and then cleaned to remove the elements listed in the SVM case. With the cleaned text, we removed stopwords, tokenized the text, and lemmatized the tokens, dropping tokens with two or less characters. Then we computed the TD-IDF features and restricted the terms to ones that appeared in at least five webpages. The restricted set of terms was used to build the feature matrix. 
 
 ### Methods
 
-Describe your final predictive models. Include one paragraph with details on the binary classification approach, and one on the multiclass approach. Include for each:
+In the binary classification approach, both models are predicting whether a document contains relevant claim content. Using the SVM method, we trained a linear-kernel SVM model using the 1000 TF-IDF features, and no additional hyperparameter tuning was applied. In the Random Forest case, we trained the model on the binary class variable using the terms that appeared in five or more webpages. We enabled feature importance measures and set the number of trees to 100 to increase efficiency. Both models were trained on an 80/20 test-train split after their respective preprocessing.
 
--   what ML/statistical method was used
-
--   model specification and hyperparameter selection
-
--   training method
+In the multiclass classification approach, the models assign documents to one of the several claim categories. The workflow is very similar to the binary classification approach. Using the SVM method, we again trained a new linear-kernel SVM model using the 1000 TF-IDF features, with no additional hyperparameter tuning. In the Random Forest method, we trained a new model on the multiclass variable, using the terms that appeared in five or more webpages. We again enabled feature importance and set the number of trees to 100. Both models were trained on the same 80/20 test-train split as the binary approach, following preprocessing.
 
 ### Results
 
-Indicate the predictive accuracy of the binary classifications and the multiclass classifications. Provide a table for each, and report sensitivity, specificity, and accuracy.[^1]
+: **Binary Classification Accuracy**
 
-[^1]: Read [this article](https://yardstick.tidymodels.org/articles/multiclass.html) on multiclass averaging.
+| Method         | Accuracy |
+|----------------|----------|
+| SVM            |  69.7%   |
+| Random Forest  |  79.8%   |
+
+: **Multiclass Classification Accuracy**
+
+| Method         | Accuracy |
+|----------------|----------|
+| SVM            |  68.0%   |
+| Random Forest  |  80.3%   |
+
+In both the binary and multiclass classification cases, the Random Forest has a higher predictive accuracy when compared to the SVM method. 
+
