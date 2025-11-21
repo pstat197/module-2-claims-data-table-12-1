@@ -20,7 +20,7 @@ library(e1071)
 ```{r load_data}
 # Load training data
 load("../data/claims-raw.RData")
-
+load("../data/claims-test.RData")
 # Check dimensions
 dim(claims_raw)
 dim(claims_test)
@@ -90,24 +90,18 @@ get_tokens <- function(df) {
 train_tokens <- get_tokens(claims_clean)
 test_tokens <- get_tokens(claims_test_clean)
 
-# ------------------------------
-# 1. TF-IDF on TRAINING DATA
-# ------------------------------
+# TF-IDF on TRAINING DATA
 train_tfidf <- train_tokens %>%
   count(.id, token.lem, name = "n") %>%
   bind_tf_idf(token.lem, .id, n)
 
-# ------------------------------
-# 2. Select Top 1000 Words
-# ------------------------------
+# Select Top 1000 Words
 top_terms <- train_tokens %>%
   count(token.lem, sort = TRUE) %>%
   slice_head(n = 1000) %>%
   pull(token.lem)
 
-# ------------------------------
-# 3. Pivot TRAIN matrix
-# ------------------------------
+# Pivot TRAIN matrix
 train_features <- train_tfidf %>%
   filter(token.lem %in% top_terms) %>%
   pivot_wider(
@@ -118,9 +112,7 @@ train_features <- train_tfidf %>%
   ) %>%
   left_join(claims_clean %>% select(.id, bclass, mclass), by = ".id")
 
-# ------------------------------
-# 4. Pivot TEST matrix
-# ------------------------------
+# Pivot TEST matrix
 test_features_raw <- test_tokens %>%
   filter(token.lem %in% top_terms) %>%
   count(.id, token.lem, name = "n") %>%
@@ -132,9 +124,7 @@ test_features_raw <- test_tokens %>%
     values_fill = 0
   )
 
-# ------------------------------
-# 5. Ensure ALL training columns exist in test set
-# ------------------------------
+# Ensure ALL training columns exist in test set
 train_cols <- names(train_features %>% select(-bclass, -mclass))
 test_cols  <- names(test_features_raw)
 
@@ -147,9 +137,7 @@ for (col in missing_cols) {
 # Drop any extra columns test has that training does not
 test_features_raw <- test_features_raw %>% select(all_of(train_cols))
 
-# ------------------------------
-# 6. Ensure ALL test IDs appear (fixes missing rows)
-# ------------------------------
+# Ensure ALL test IDs appear (fixes missing rows)
 all_test_ids <- claims_test_clean$.id
 
 test_features <- tibble(.id = all_test_ids) %>%
