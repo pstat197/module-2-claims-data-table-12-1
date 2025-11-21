@@ -1,0 +1,415 @@
+---
+title: "Random Forest Model"
+author: "Kaeya Mehta"
+date: "2025-11-19"
+output: html_document
+---
+
+# Libraries 
+
+```{r}
+require(tidyverse)
+require(tidytext)
+require(textstem)
+require(rvest)
+require(qdapRegex)
+require(stopwords)
+require(tokenizers)
+library(caret)
+library(tidymodels)
+library(dplyr)
+library(randomForest)
+```
+
+
+# Preprocessing
+
+Load raw data
+```{r}
+load("data/claims-raw.RData")
+load("data/claims-test.RData")
+```
+
+
+## Functions to preprocess
+```{r}
+# function to parse html and clean text
+parse_fn <- function(.html) {
+  read_html(.html) %>%
+    html_elements("p, h1, h2, h3, h4, h5, h6") %>%
+    html_text2() %>%
+    str_c(collapse = " ") %>%
+    rm_url() %>%
+    rm_email() %>%
+    str_remove_all("'") %>%
+    str_replace_all(paste(
+      c(
+        "\n",
+        "[[:punct:]]",
+        "nbsp",
+        "[[:digit:]]",
+        "[[:symbol:]]"
+      ),
+      collapse = "|"
+    ), " ") %>%
+    str_replace_all("([a-z])([A-Z])", "\\1 \\2") %>%
+    tolower() %>%
+    str_replace_all("\\s+", " ")
+}
+
+# function to apply to claims data
+parse_data <- function(.df) {
+  out <- .df %>%
+    filter(str_detect(text_tmp, "<!")) %>%
+    rowwise() %>%
+    mutate(text_clean = parse_fn(text_tmp)) %>%
+    unnest(text_clean)
+  return(out)
+}
+
+```
+
+
+## Cleaned data
+```{r}
+set.seed(123)
+claims_split <- claims_raw %>%
+  initial_split(prop = 0.8)
+claims_train_cv <- training(claims_split)
+claims_test_cv <- testing(claims_split)
+
+claims_clean_train <- parse_data(claims_train_cv)
+claims_clean_test <- parse_data(claims_test_cv)
+```
+
+
+# Tokenization for Train - Binary
+```{r}
+stpwrd <- stop_words %>%
+  pull(word) %>%
+  str_remove_all("[[:punct:]]")
+
+tokens_all <- claims_clean_train %>%
+  select(.id, bclass, mclass, text_clean) %>%    
+  unnest_tokens(
+    output = token,
+    input  = text_clean,
+    token  = "words",
+    stopwords = stpwrd
+  ) %>%
+  mutate(token = lemmatize_words(token)) %>%     
+  filter(str_length(token) > 2)  
+
+tf_counts <- tokens_all %>%
+  dplyr::count(.id, bclass, token, name = "n")
+
+claims_tfidf_binary <- tf_counts %>%
+  bind_tf_idf(
+    term     = token,
+    document = .id,
+    n        = n
+  )
+
+claims_training_binary <- claims_tfidf_binary %>%
+  tidyr::pivot_wider(
+    id_cols     = c(.id, bclass),
+    names_from  = token,
+    values_from = tf_idf,
+    values_fill = 0
+  )
+
+colnames(claims_training_binary) <- make.names(colnames(claims_training_binary))
+
+token_cols <- setdiff(names(claims_training_binary), c(".id", "bclass"))
+
+nonzero_counts <- colSums(claims_training_binary[, token_cols] != 0)
+keep_tokens <- names(nonzero_counts)[nonzero_counts >= 5]
+
+vocabbin <- keep_tokens
+
+claims_training_small <- claims_training_binary %>%
+  select(bclass, all_of(keep_tokens))
+
+claims_training_small
+```
+
+# Tokenization for Test - Binary
+```{r}
+stpwrd <- stop_words %>%
+  pull(word) %>%
+  str_remove_all("[[:punct:]]")
+
+tokens_all <- claims_clean_test %>%
+  select(.id, bclass, mclass, text_clean) %>%    
+  unnest_tokens(
+    output = token,
+    input  = text_clean,
+    token  = "words",
+    stopwords = stpwrd
+  ) %>%
+  mutate(token = lemmatize_words(token)) %>%     
+  filter(str_length(token) > 2,
+         token %in% vocabbin)  
+
+tf_counts <- tokens_all %>%
+  dplyr::count(.id, bclass, token, name = "n")
+
+claims_tfidf_binary <- tf_counts %>%
+  bind_tf_idf(
+    term     = token,
+    document = .id,
+    n        = n
+  )
+
+claims_testing_binary <- claims_tfidf_binary %>%
+  tidyr::pivot_wider(
+    id_cols     = c(.id, bclass),
+    names_from  = token,
+    values_from = tf_idf,
+    values_fill = 0
+  )
+
+missing_in_test <- setdiff(vocabbin, names(claims_testing_binary))
+for (tok in missing_in_test) {
+  claims_testing_binary[[tok]] <- 0
+}
+
+claims_testing_small <- claims_testing_binary %>%
+  select(bclass, all_of(vocabbin))
+
+claims_testing_small
+
+```
+
+# Run model - Binary
+```{r}
+set.seed(123)
+
+colnames(claims_training_small) <- make.names(colnames(claims_training_small))
+
+claims_training_small$bclass <- factor(claims_training_small$bclass)
+
+rf.claims_training_binary = randomForest(bclass ~ ., data=claims_training_small, importance=TRUE, ntree = 100)
+```
+
+# Predict model - Binary
+```{r}
+colnames(claims_testing_small) <- make.names(colnames(claims_testing_small))
+preds <- predict(rf.claims_training_binary, newdata = claims_testing_small)
+```
+
+# Accuracy - Binary
+```{r}
+conftable <- table(preds, claims_testing_small$bclass)
+conftable
+
+accuracy <- sum(diag(conftable)) / sum(conftable)
+accuracy
+```
+
+
+
+
+# Tokenization for Train - Multiple Classification
+
+```{r}
+stpwrd <- stop_words %>%
+  pull(word) %>%
+  str_remove_all("[[:punct:]]")
+
+tokens_all <- claims_clean_train %>%
+  select(.id, bclass, mclass, text_clean) %>%    
+  unnest_tokens(
+    output = token,
+    input  = text_clean,
+    token  = "words",
+    stopwords = stpwrd
+  ) %>%
+  mutate(token = lemmatize_words(token)) %>%     
+  filter(str_length(token) > 2)  
+
+tf_counts <- tokens_all %>%
+  dplyr::count(.id, mclass, token, name = "n")
+
+claims_tfidf_multiple <- tf_counts %>%
+  bind_tf_idf(
+    term     = token,
+    document = .id,
+    n        = n
+  )
+
+claims_training_multiple <- claims_tfidf_multiple %>%
+  tidyr::pivot_wider(
+    id_cols     = c(.id, mclass),
+    names_from  = token,
+    values_from = tf_idf,
+    values_fill = 0
+  )
+
+token_cols <- setdiff(names(claims_training_multiple), c(".id", "mclass"))
+
+nonzero_counts <- colSums(claims_training_multiple[, token_cols] != 0)
+keep_tokens <- names(nonzero_counts)[nonzero_counts >= 5]
+
+vocab1 <- keep_tokens
+
+claims_training_small <- claims_training_multiple %>%
+  select(mclass, all_of(keep_tokens))
+
+claims_training_small
+```
+
+
+# Tokenization for Test - Multiple
+```{r}
+stpwrd <- stop_words %>%
+  pull(word) %>%
+  str_remove_all("[[:punct:]]")
+
+tokens_all <- claims_clean_test %>%
+  select(.id, bclass, mclass, text_clean) %>%    
+  unnest_tokens(
+    output = token,
+    input  = text_clean,
+    token  = "words",
+    stopwords = stpwrd
+  ) %>%
+  mutate(token = lemmatize_words(token)) %>%     
+  filter(str_length(token) > 2,
+         token %in% vocab)  
+
+tf_counts <- tokens_all %>%
+  dplyr::count(.id, mclass, token, name = "n")
+
+claims_tfidf_multiple <- tf_counts %>%
+  bind_tf_idf(
+    term     = token,
+    document = .id,
+    n        = n
+  )
+
+claims_testing_multiple <- claims_tfidf_multiple %>%
+  tidyr::pivot_wider(
+    id_cols     = c(.id, mclass),
+    names_from  = token,
+    values_from = tf_idf,
+    values_fill = 0
+  )
+
+missing_in_test <- setdiff(vocab, names(claims_testing_multiple))
+for (tok in missing_in_test) {
+  claims_testing_multiple[[tok]] <- 0
+}
+
+claims_testing_small <- claims_testing_multiple %>%
+  select(mclass, all_of(vocab))
+
+claims_testing_small
+```
+
+
+# Run model - Multiple
+```{r}
+set.seed(123)
+
+colnames(claims_training_small) <- make.names(colnames(claims_training_small))
+
+claims_training_small$mclass <- factor(claims_training_small$mclass)
+
+rf.claims_training_multiple = randomForest(mclass ~ ., data=claims_training_small, importance=TRUE, ntree = 100)
+```
+
+# Predict model - Multiple
+```{r}
+colnames(claims_testing_small) <- make.names(colnames(claims_testing_small))
+preds <- predict(rf.claims_training_multiple, newdata = claims_testing_small)
+```
+
+# Accuracy - Multiple
+```{r}
+conftable <- table(preds, claims_testing_small$mclass)
+conftable
+
+accuracy <- sum(diag(conftable)) / sum(conftable)
+accuracy
+```
+
+
+
+# Preprocessing for test data
+```{r}
+claims_clean_testdf <- parse_data(claims_test)
+
+stpwrd <- stop_words %>%
+  pull(word) %>%
+  str_remove_all("[[:punct:]]")
+
+tokens_all <- claims_clean_testdf %>%
+  select(.id, text_clean) %>%    
+  unnest_tokens(
+    output = token,
+    input  = text_clean,
+    token  = "words",
+    stopwords = stpwrd
+  ) %>%
+  mutate(token = lemmatize_words(token)) %>%     
+  filter(str_length(token) > 2,
+         token %in% vocabbin)  
+
+tf_counts <- tokens_all %>%
+  dplyr::count(.id, token, name = "n")
+
+claims_tfidf_binary <- tf_counts %>%
+  bind_tf_idf(
+    term     = token,
+    document = .id,
+    n        = n
+  )
+
+claims_testing_binary <- claims_tfidf_binary %>%
+  tidyr::pivot_wider(
+    id_cols     = c(.id),
+    names_from  = token,
+    values_from = tf_idf,
+    values_fill = 0
+  )
+
+missing_in_test <- setdiff(vocabbin, names(claims_testing_binary))
+for (tok in missing_in_test) {
+  claims_testing_binary[[tok]] <- 0
+}
+
+claims_testing_small <- claims_testing_binary %>%
+  select(all_of(vocabbin))
+
+claims_testing_small
+```
+
+# Build Predict DF
+```{r}
+predsbin <- predict(rf.claims_training_binary, newdata = claims_testing_small)
+predsmult <- predict(rf.claims_training_multiple, newdata = claims_testing_small)
+
+pred_df <- tibble(
+  .id = claims_testing_binary$.id,
+  bclass.pred = predsbin,
+  mclass.pred = predsmult
+)
+
+pred_df
+```
+
+# Upload Models
+```{r}
+# Save predictions
+save(pred_df, file = "results/preds-rf.RData")
+
+# Save models
+saveRDS(rf.claims_training_binary, "results/rf-binary.rds")
+saveRDS(rf.claims_training_multiple, "results/rf-multiclass.rds")
+```
+
+
+
+
+

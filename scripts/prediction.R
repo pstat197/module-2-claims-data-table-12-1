@@ -1,10 +1,16 @@
 require(tidyverse)
 require(keras)
 require(tensorflow)
+require(reticulate)
 load('data/claims-test.RData')
 load('data/claims-raw.RData')
 source('scripts/preprocessing.R')
-tf_model <- load_model_tf('results/example-model')
+
+#tf_model <- keras::load_model_tf('results/example-model')
+layer <- keras$layers$TFSMLayer(
+  "results/example-model",
+  call_endpoint = "serving_default"
+)
 
 # apply preprocessing pipeline
 clean_df <- claims_test %>%
@@ -17,8 +23,9 @@ x <- clean_df %>%
   pull(text_clean)
 
 # compute predictions
-preds <- predict(tf_model, x) %>%
-  as.numeric()
+#preds <- predict(tf_model, x) %>%
+#  as.numeric()
+preds <- layer(x) %>% as.numeric()
 
 class_labels <- claims_raw %>% pull(bclass) %>% levels()
 
@@ -30,3 +37,4 @@ pred_df <- clean_df %>%
   select(.id, bclass.pred)
 
 save(pred_df, file = 'results/example-preds.RData')
+
