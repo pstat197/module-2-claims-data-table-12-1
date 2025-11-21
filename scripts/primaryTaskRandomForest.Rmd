@@ -26,16 +26,12 @@ library(randomForest)
 
 Load raw data
 ```{r}
-load("/Users/kaeya/PSTAT 197A/module-2-claims-data-table-12-1/data/claims-raw.RData")
-load("/Users/kaeya/PSTAT 197A/module-2-claims-data-table-12-1/data/claims-test.RData")
-```
-
-```{r}
-view(claims_test)
+load("data/claims-raw.RData")
+load("data/claims-test.RData")
 ```
 
 
-Functions to preprocess
+## Functions to preprocess
 ```{r}
 # function to parse html and clean text
 parse_fn <- function(.html) {
@@ -74,7 +70,7 @@ parse_data <- function(.df) {
 ```
 
 
-Cleaned data
+## Cleaned data
 ```{r}
 set.seed(123)
 claims_split <- claims_raw %>%
@@ -87,7 +83,7 @@ claims_clean_test <- parse_data(claims_test_cv)
 ```
 
 
-Tokenization for Train - Binary
+# Tokenization for Train - Binary
 ```{r}
 stpwrd <- stop_words %>%
   pull(word) %>%
@@ -137,7 +133,7 @@ claims_training_small <- claims_training_binary %>%
 claims_training_small
 ```
 
-Tokenization for Test - Binary
+# Tokenization for Test - Binary
 ```{r}
 stpwrd <- stop_words %>%
   pull(word) %>%
@@ -185,7 +181,7 @@ claims_testing_small
 
 ```
 
-Run model - Binary
+# Run model - Binary
 ```{r}
 set.seed(123)
 
@@ -196,13 +192,13 @@ claims_training_small$bclass <- factor(claims_training_small$bclass)
 rf.claims_training_binary = randomForest(bclass ~ ., data=claims_training_small, importance=TRUE, ntree = 100)
 ```
 
-Predict model - Binary
+# Predict model - Binary
 ```{r}
 colnames(claims_testing_small) <- make.names(colnames(claims_testing_small))
 preds <- predict(rf.claims_training_binary, newdata = claims_testing_small)
 ```
 
-Accuracy - Binary
+# Accuracy - Binary
 ```{r}
 conftable <- table(preds, claims_testing_small$bclass)
 conftable
@@ -214,7 +210,7 @@ accuracy
 
 
 
-Tokenization for Train - Multiple Classification
+# Tokenization for Train - Multiple Classification
 
 ```{r}
 stpwrd <- stop_words %>%
@@ -264,7 +260,7 @@ claims_training_small
 ```
 
 
-Tokenization for Test - Multiple
+# Tokenization for Test - Multiple
 ```{r}
 stpwrd <- stop_words %>%
   pull(word) %>%
@@ -312,7 +308,7 @@ claims_testing_small
 ```
 
 
-Run model - Multiple
+# Run model - Multiple
 ```{r}
 set.seed(123)
 
@@ -323,13 +319,13 @@ claims_training_small$mclass <- factor(claims_training_small$mclass)
 rf.claims_training_multiple = randomForest(mclass ~ ., data=claims_training_small, importance=TRUE, ntree = 100)
 ```
 
-Predict model - Multiple
+# Predict model - Multiple
 ```{r}
 colnames(claims_testing_small) <- make.names(colnames(claims_testing_small))
 preds <- predict(rf.claims_training_multiple, newdata = claims_testing_small)
 ```
 
-Accuracy - Multiple
+# Accuracy - Multiple
 ```{r}
 conftable <- table(preds, claims_testing_small$mclass)
 conftable
@@ -340,7 +336,7 @@ accuracy
 
 
 
-Preprocessing for test data
+# Preprocessing for test data
 ```{r}
 claims_clean_testdf <- parse_data(claims_test)
 
@@ -389,6 +385,7 @@ claims_testing_small <- claims_testing_binary %>%
 claims_testing_small
 ```
 
+# Build Predict DF
 ```{r}
 predsbin <- predict(rf.claims_training_binary, newdata = claims_testing_small)
 predsmult <- predict(rf.claims_training_multiple, newdata = claims_testing_small)
@@ -402,13 +399,14 @@ pred_df <- tibble(
 pred_df
 ```
 
+# Upload Models
 ```{r}
 # Save predictions
-save(pred_df, file = "/Users/kaeya/PSTAT 197A/module-2-claims-data-table-12-1/results/preds-rf.RData")
+save(pred_df, file = "results/preds-rf.RData")
 
 # Save models
-saveRDS(rf.claims_training_binary, "/Users/kaeya/PSTAT 197A/module-2-claims-data-table-12-1/results/rf-binary.rds")
-saveRDS(rf.claims_training_multiple, "/Users/kaeya/PSTAT 197A/module-2-claims-data-table-12-1/results/rf-multiclass.rds")
+saveRDS(rf.claims_training_binary, "results/rf-binary.rds")
+saveRDS(rf.claims_training_multiple, "results/rf-multiclass.rds")
 ```
 
 
