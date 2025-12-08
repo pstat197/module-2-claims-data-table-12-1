@@ -10,7 +10,7 @@ require(tokenizers)
 
 # function to parse html and clean text
 parse_fn <- function(.html){
-  read_html(.html) 
+  page <- read_html(.html) 
   
 # paragraph text
   body_text <- page %>% 
