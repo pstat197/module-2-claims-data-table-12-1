@@ -1,0 +1,47 @@
+---
+title: "angie_task_summary"
+author: "Anjani Sethi"
+date: "2025-12-08"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Task 1: Does including header text improve prediction?
+
+To assess whether header information improves classification performance, I extended
+the HTML parser to include headers in addition to paragraph text. I evaluated
+performance on a 70/30 train–test split using PCR. The paragraph-only model 
+achieved a test accuracy of about **0.671**, while the header-augmented model 
+achieved only about **0.594**. This tells us that headers do not provide useful
+additional signal for this task and likely introduce unnecessary noise.
+
+## Task 2: Bigram tokenization and stacked logistic model
+
+To evaluate whether bigram features contain additional predictive information, 
+I repeated the logistic principal component regression workflow using a 
+secondary tokenization into bigrams. After preprocessing, TF–IDF weighting, 
+and removal of zero-variance columns, the bigram dataset collapsed to zero 
+usable features (1970 × 0). This indicates that bigram terms were either 
+extremely sparse or appeared too infrequently to contribute stable signal after
+cleaning. As a result, the PCA model using bigrams produced accuracy close to 
+random guessing (0.51), which is substantially worse than the word-only 
+PCR model from Task 1 (≈0.67 accuracy). Based on this result, bigrams do not 
+appear to provide additional information for classifying claims pages within 
+this preprocessing pipeline.
+
+## Task 3: Neural network model
+
+For Task 3, I trained a simple feed-forward neural network using the nnet package. The network used the same TF–IDF + PCA representation from Task 1, with 50 principal components as input, one hidden layer with 5 units, and weight decay for regularization. Unlike the earlier baseline models, this approach allowed nonlinear relationships among the PCA features. The neural network achieved a test accuracy of 0.637, which is slightly lower than the PCA logistic regression benchmark (0.671) but noticeably higher than the bigram-augmented model from Task 2 (≈0.51). These results suggest that while nonlinear modeling improves performance over simple bag-of-words extensions, the PCA logistic model remains the strongest among the models explored so far.
+
+## Primary write-up: prediction summary
+
+For the primary task, I developed predictive models for both the binary and multiclass webpage-classification problems using the full TF–IDF feature set and a PCA-based dimension-reduction pipeline. The cleaned text was processed into TF–IDF features, zero-variance terms were removed, and the remaining matrix was reduced using the first 50 principal components from PCA. These components were used as inputs to two glmnet models—one binomial and one multinomial.
+
+For the binary classification model, I fit a regularized logistic regression using cross-validated glmnet. The final model achieved a test accuracy of 0.557, comparable to earlier results in Tasks 1–3 and consistent with the general difficulty of this classification problem. The model output was converted into labeled predictions and used to produce the required bclass.pred output for the test set.
+
+For the multiclass classification model, I used a multinomial logistic regression with glmnet using the same PCA inputs. The multiclass model achieved a test accuracy of 0.580, indicating slightly improved performance compared to the binary version and suggesting that the additional class structure provided useful information. These predictions formed the mclass.pred output required for the final deliverables.
+
+I exported the models as usable .RData files, and a compact prediction script was created to illustrate how another user could load the trained models, project new TF–IDF data into PCA space, and generate both binary and multiclass predictions. Finally, the test-set predictions were formatted into the required pred_df object and saved in the results folder. Overall, the models performed consistently with the exploratory findings from Tasks 1–3. Regularized models trained on PCA components offer a more stable baseline, and the deployed versions provide a functional workflow for classifying new webpages.

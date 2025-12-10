@@ -10,10 +10,23 @@ require(tokenizers)
 
 # function to parse html and clean text
 parse_fn <- function(.html){
-  read_html(.html) %>%
+  page <- read_html(.html) 
+  
+# paragraph text
+  body_text <- page %>% 
     html_elements('p') %>%
-    html_text2() %>%
-    str_c(collapse = ' ') %>%
+    html_text2()
+
+# header text
+  header_text <- page %>% 
+    html_elements('h1, h2, h3, h4, h5, h6') %>% 
+    html_text2()
+  
+# combine 
+  full_text <- c(header_text, body_text) %>% 
+    str_c(collapse = ' ') 
+  
+  full_text %>% 
     rm_url() %>%
     rm_email() %>%
     str_remove_all('\'') %>%
